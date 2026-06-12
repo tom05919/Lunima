@@ -24,7 +24,8 @@ public class SimpleNazcaExporter
     /// Optional per-instance Nazca overrides keyed by component identifier (issue #559).
     /// For entries whose <see cref="NazcaCodeOverride.RawCode"/> is non-null, the export emits
     /// a self-contained factory cell and places the instance via that factory instead of the
-    /// PDK template. Connections touching such instances are skipped + warned (v1 follow-up).
+    /// PDK template — org-anchored on the persisted bbox corner so the geometry lands on the
+    /// component's grid rectangle. Connections to such instances export normally (issue #561).
     /// </param>
     public string Export(
         DesignCanvasViewModel canvas,
@@ -39,7 +40,7 @@ public class SimpleNazcaExporter
         AppendHeader(sb);
         NazcaOverrideFactory.AppendFactories(sb, rawOverrides);
         AppendPdkComponentStubs(sb, canvas, rawOverrides);
-        var componentNames = AppendComponents(sb, canvas, rawOverrides);
+        var componentNames = AppendComponents(sb, canvas, rawOverrides, overrides);
         AppendConnections(sb, canvas, componentNames, rawOverrides);
         AppendFooter(sb);
 
@@ -279,7 +280,8 @@ public class SimpleNazcaExporter
     }
 
     private static Dictionary<Component, string> AppendComponents(
-        StringBuilder sb, DesignCanvasViewModel canvas, IReadOnlyDictionary<string, string> rawOverrides)
+        StringBuilder sb, DesignCanvasViewModel canvas, IReadOnlyDictionary<string, string> rawOverrides,
+        IReadOnlyDictionary<string, NazcaCodeOverride>? overrides)
     {
         sb.AppendLine("def create_design():");
         sb.AppendLine("    with nd.Cell(name='ConnectAPIC_Design') as design:");
@@ -299,12 +301,12 @@ public class SimpleNazcaExporter
                 foreach (var child in group.GetAllComponentsRecursive())
                 {
                     if (child.IsAnalysisTool) continue;
-                    AppendSingleComponent(sb, child, componentNames, ref compIndex, ci, rawOverrides);
+                    AppendSingleComponent(sb, child, componentNames, ref compIndex, ci, rawOverrides, overrides);
                 }
             }
             else
             {
-                AppendSingleComponent(sb, comp, componentNames, ref compIndex, ci, rawOverrides);
+                AppendSingleComponent(sb, comp, componentNames, ref compIndex, ci, rawOverrides, overrides);
             }
         }
 
@@ -317,12 +319,20 @@ public class SimpleNazcaExporter
     /// </summary>
     private static void AppendSingleComponent(
         StringBuilder sb, Component comp, Dictionary<Component, string> componentNames,
-        ref int compIndex, CultureInfo ci, IReadOnlyDictionary<string, string> rawOverrides)
+        ref int compIndex, CultureInfo ci, IReadOnlyDictionary<string, string> rawOverrides,
+        IReadOnlyDictionary<string, NazcaCodeOverride>? overrides)
     {
         var varName = $"comp_{compIndex}";
         componentNames[comp] = varName;
 
-        var (originOffsetX, originOffsetY) = CalculateOriginOffset(comp);
+        bool isRawOverride = rawOverrides.ContainsKey(comp.Identifier);
+        var overrideBbox = isRawOverride ? GetOverrideBboxAnchor(comp, overrides) : null;
+
+        // A bbox-anchored override computes its own origin offset: the cell-internal
+        // bbox corner (XMin, YMax) must land on the component's grid rectangle.
+        var (originOffsetX, originOffsetY) = overrideBbox is { } anchor
+            ? RotateOffset(-anchor.XMin, anchor.YMax, comp.RotationDegrees)
+            : CalculateOriginOffset(comp);
 
         var nazcaX = (comp.PhysicalX + originOffsetX).ToString("F2", ci);
         var nazcaY = NormalizeZero(-(comp.PhysicalY + originOffsetY)).ToString("F2", ci);
@@ -339,7 +349,7 @@ public class SimpleNazcaExporter
         // Pin coordinate diagnostics: show expected Nazca pin positions for alignment verification.
         foreach (var pin in comp.PhysicalPins)
         {
-            var (pinNazcaX, pinNazcaY) = pin.GetAbsoluteNazcaPosition();
+            var (pinNazcaX, pinNazcaY) = GetNazcaPinPosition(pin, rawOverrides);
             sb.AppendLine($"        # PIN: {pin.Name} expected_nazca=({pinNazcaX.ToString("F2", ci)},{pinNazcaY.ToString("F2", ci)})");
         }
 
@@ -357,19 +367,69 @@ public class SimpleNazcaExporter
         // on 'org' explicitly makes .put() place the cell origin at the
         // computed (x, y) — which IS the contract Lunima's calibration
         // and export math both assume.
-        if (rawOverrides.ContainsKey(comp.Identifier))
+        if (isRawOverride)
         {
-            // Raw-code override (issue #559): the factory builds the cell via
-            // `with nd.Cell()`, which has NO 'org' pin, so anchoring on 'org' would
-            // fail. Use default-anchor placement — correct for v1 geometry-first scope.
             var factory = NazcaOverrideFactory.FactoryName(comp.Identifier);
-            sb.AppendLine($"        {varName} = {factory}().put({nazcaX}, {nazcaY}, {rot})  # {comp.Identifier} (raw-code override)");
+            // With a persisted bbox anchor the cell is org-anchored so its geometry
+            // lands exactly on the grid rectangle (issue #561). Every nd.Cell() has
+            // an 'org' pin. Overrides saved before the anchor existed fall back to
+            // the old default-anchor placement.
+            sb.AppendLine(overrideBbox != null
+                ? $"        {varName} = {factory}().put('org', {nazcaX}, {nazcaY}, {rot})  # {comp.Identifier} (raw-code override, bbox-anchored)"
+                : $"        {varName} = {factory}().put({nazcaX}, {nazcaY}, {rot})  # {comp.Identifier} (raw-code override)");
         }
         else
         {
             sb.AppendLine($"        {varName} = {nazcaFunc}.put('org', {nazcaX}, {nazcaY}, {rot})  # {comp.Identifier}");
         }
         compIndex++;
+    }
+
+    /// <summary>
+    /// Returns the persisted cell-internal bbox anchor (XMin, YMax) of a raw-code
+    /// override, or null when the override predates the anchor fields.
+    /// </summary>
+    private static (double XMin, double YMax)? GetOverrideBboxAnchor(
+        Component comp, IReadOnlyDictionary<string, NazcaCodeOverride>? overrides)
+    {
+        if (overrides == null || !overrides.TryGetValue(comp.Identifier, out var record))
+            return null;
+        if (record.OverrideBboxXMinMicrometers is { } xMin
+            && record.OverrideBboxYMaxMicrometers is { } yMax)
+            return (xMin, yMax);
+        return null;
+    }
+
+    /// <summary>
+    /// Rotates a cell-local origin-offset vector by the component rotation — the same
+    /// convention <see cref="CalculateOriginOffset"/> applies to PDK origin offsets.
+    /// </summary>
+    private static (double OffsetX, double OffsetY) RotateOffset(
+        double offsetX, double offsetY, double rotationDegrees)
+    {
+        double rotRad = rotationDegrees * Math.PI / 180.0;
+        return (offsetX * Math.Cos(rotRad) - offsetY * Math.Sin(rotRad),
+                offsetX * Math.Sin(rotRad) + offsetY * Math.Cos(rotRad));
+    }
+
+    /// <summary>
+    /// World-space Nazca position of a connection endpoint pin. Pins of raw-code–
+    /// overridden components are bbox-anchored, so their app-space position converts
+    /// 1:1 (plain Y negation). Regular PDK pins go through the calibrated
+    /// NazcaOriginOffset math in <see cref="PhysicalPin.GetAbsoluteNazcaPosition"/> —
+    /// which, applied to an override pin, would shift the waveguide by the stale
+    /// template offset (manual finding: 109.505 µm in KLayout, issue #561).
+    /// </summary>
+    private static (double X, double Y) GetNazcaPinPosition(
+        PhysicalPin pin, IReadOnlyDictionary<string, string>? rawOverrides)
+    {
+        var identifier = pin.ParentComponent?.Identifier;
+        if (identifier != null && rawOverrides != null && rawOverrides.ContainsKey(identifier))
+        {
+            var (x, y) = pin.GetAbsolutePosition();
+            return (x, -y);
+        }
+        return pin.GetAbsoluteNazcaPosition();
     }
 
     /// <summary>
@@ -431,72 +491,45 @@ public class SimpleNazcaExporter
             if (conn.StartPin?.ParentComponent?.IsAnalysisTool == true) continue;
             if (conn.EndPin?.ParentComponent?.IsAnalysisTool == true) continue;
 
-            // v1 (issue #559): an overridden instance's RawCode cell may expose pins
-            // that differ from the PDK template, so we cannot reliably wire to it yet.
-            // Skip + warn; wiring overridden instances is a documented follow-up.
-            if (TrySkipOverriddenConnection(sb, conn, rawOverrides)) continue;
-
+            // Issue #561: connections touching raw-code–overridden instances export
+            // their REAL routed segments like any other connection — the override
+            // cell is bbox-anchored, so app-space segment coordinates line up with
+            // its geometry and the GDS shows the same bends/radii as the canvas.
+            // Only routeless connections fall back to a p2p interconnect.
             var segments = conn.GetPathSegments();
 
             if (segments.Count > 0)
-                AppendSegmentExport(sb, segments, conn.StartPin, conn.EndPin);
+                AppendSegmentExport(sb, segments, conn.StartPin, conn.EndPin, rawOverrides);
             else
-                AppendFallbackExport(sb, conn, componentNames);
+                AppendFallbackExport(sb, conn, componentNames, rawOverrides);
         }
 
         // Export frozen waveguide paths from ComponentGroups
         foreach (var compVm in canvas.Components)
         {
             if (compVm.Component is ComponentGroup group)
-                AppendGroupFrozenPaths(sb, group);
+                AppendGroupFrozenPaths(sb, group, rawOverrides);
         }
 
         sb.AppendLine();
     }
 
     /// <summary>
-    /// If either endpoint of the connection belongs to an overridden instance, emits a
-    /// NOTE comment explaining the skip and returns true (issue #559 v1). Otherwise false.
-    /// </summary>
-    private static bool TrySkipOverriddenConnection(
-        StringBuilder sb, WaveguideConnection conn, IReadOnlyDictionary<string, string> rawOverrides)
-    {
-        if (rawOverrides.Count == 0)
-            return false;
-
-        var startId = conn.StartPin?.ParentComponent?.Identifier;
-        var endId = conn.EndPin?.ParentComponent?.Identifier;
-
-        string? overriddenId = null;
-        if (startId != null && rawOverrides.ContainsKey(startId))
-            overriddenId = startId;
-        else if (endId != null && rawOverrides.ContainsKey(endId))
-            overriddenId = endId;
-
-        if (overriddenId == null)
-            return false;
-
-        sb.AppendLine(
-            $"        # NOTE: connection to overridden instance {overriddenId} skipped — " +
-            "its pins may differ from the template (see issue #559 follow-up).");
-        return true;
-    }
-
-    /// <summary>
     /// Exports all frozen waveguide paths from a ComponentGroup (and nested groups) as Nazca segments.
     /// </summary>
-    private static void AppendGroupFrozenPaths(StringBuilder sb, ComponentGroup group)
+    private static void AppendGroupFrozenPaths(
+        StringBuilder sb, ComponentGroup group, IReadOnlyDictionary<string, string> rawOverrides)
     {
         foreach (var frozenPath in group.InternalPaths)
         {
             if (frozenPath?.Path?.Segments?.Count > 0)
-                AppendSegmentExport(sb, frozenPath.Path.Segments, frozenPath.StartPin, frozenPath.EndPin);
+                AppendSegmentExport(sb, frozenPath.Path.Segments, frozenPath.StartPin, frozenPath.EndPin, rawOverrides);
         }
 
         foreach (var child in group.ChildComponents)
         {
             if (child is ComponentGroup nestedGroup)
-                AppendGroupFrozenPaths(sb, nestedGroup);
+                AppendGroupFrozenPaths(sb, nestedGroup, rawOverrides);
         }
     }
 
@@ -517,12 +550,13 @@ public class SimpleNazcaExporter
     /// <param name="endPin">End pin used only for single-straight-segment paths (direct pin-to-pin geometry).</param>
     internal static void AppendSegmentExport(
         StringBuilder sb, IReadOnlyList<PathSegment> segments,
-        PhysicalPin? startPin = null, PhysicalPin? endPin = null)
+        PhysicalPin? startPin = null, PhysicalPin? endPin = null,
+        IReadOnlyDictionary<string, string>? rawOverrides = null)
     {
         // Single straight segment: compute geometry directly from both pin positions.
         if (segments.Count == 1 && segments[0] is StraightSegment && startPin != null && endPin != null)
         {
-            sb.AppendLine(FormatStraightSegmentFromPins(startPin, endPin));
+            sb.AppendLine(FormatStraightSegmentFromPins(startPin, endPin, rawOverrides));
             return;
         }
 
@@ -535,7 +569,7 @@ public class SimpleNazcaExporter
         if (startPin != null && segments.Count > 0)
         {
             var (editorPinX, editorPinY) = startPin.GetAbsolutePosition();
-            var (nazcaPinX, nazcaPinY) = startPin.GetAbsoluteNazcaPosition();
+            var (nazcaPinX, nazcaPinY) = GetNazcaPinPosition(startPin, rawOverrides);
             offsetX = nazcaPinX - editorPinX;
             offsetY = nazcaPinY - (-editorPinY);
         }
@@ -613,11 +647,13 @@ public class SimpleNazcaExporter
     /// ensuring the waveguide reaches the end pin exactly regardless of NazcaOriginOffset.
     /// Fix for Issue #355: end pin misalignment when NazcaOriginOffsetY ≠ HeightMicrometers.
     /// </summary>
-    private static string FormatStraightSegmentFromPins(PhysicalPin startPin, PhysicalPin endPin)
+    private static string FormatStraightSegmentFromPins(
+        PhysicalPin startPin, PhysicalPin endPin,
+        IReadOnlyDictionary<string, string>? rawOverrides)
     {
         var ci = CultureInfo.InvariantCulture;
-        var (sx, sy) = startPin.GetAbsoluteNazcaPosition();
-        var (ex, ey) = endPin.GetAbsoluteNazcaPosition();
+        var (sx, sy) = GetNazcaPinPosition(startPin, rawOverrides);
+        var (ex, ey) = GetNazcaPinPosition(endPin, rawOverrides);
 
         double dx = ex - sx;
         double dy = ey - sy;
@@ -744,21 +780,44 @@ public class SimpleNazcaExporter
     private static void AppendFallbackExport(
         StringBuilder sb,
         WaveguideConnection conn,
-        Dictionary<Component, string> componentNames)
+        Dictionary<Component, string> componentNames,
+        IReadOnlyDictionary<string, string> rawOverrides)
     {
-        var startComp = conn.StartPin.ParentComponent;
-        var endComp = conn.EndPin.ParentComponent;
+        var startRef = BuildEndpointReference(conn.StartPin, componentNames, rawOverrides);
+        var endRef = BuildEndpointReference(conn.EndPin, componentNames, rawOverrides);
 
-        if (componentNames.TryGetValue(startComp, out var startName) &&
-            componentNames.TryGetValue(endComp, out var endName))
-        {
-            var startPin = conn.StartPin.Name;
-            var endPin = conn.EndPin.Name;
+        if (startRef != null && endRef != null)
+            sb.AppendLine($"        ic.sbend_p2p({startRef}, {endRef}).put()");
+    }
 
-            sb.AppendLine(
-                $"        ic.sbend_p2p({startName}.pin['{startPin}'], " +
-                $"{endName}.pin['{endPin}']).put()");
-        }
+    /// <summary>
+    /// Builds the Nazca expression anchoring one connection endpoint for the p2p fallback.
+    /// A raw-code–overridden instance exposes the in-app pin names on its cell, so a pin
+    /// reference (<c>comp_N.pin['name']</c>) is exact. A regular PDK cell defines its own
+    /// pin names which generally do NOT match the in-app names (KeyError at script run
+    /// time), so its endpoint is anchored by absolute Nazca position and direction instead.
+    /// </summary>
+    private static string? BuildEndpointReference(
+        PhysicalPin pin,
+        Dictionary<Component, string> componentNames,
+        IReadOnlyDictionary<string, string> rawOverrides)
+    {
+        var component = pin.ParentComponent;
+        if (component == null || !componentNames.TryGetValue(component, out var name))
+            return null;
+
+        bool isOverridden = component.Identifier != null
+            && rawOverrides.ContainsKey(component.Identifier);
+        if (isOverridden)
+            return $"{name}.pin['{pin.Name}']";
+
+        var ci = CultureInfo.InvariantCulture;
+        var (x, y) = pin.GetAbsoluteNazcaPosition();
+        var px = NormalizeZero(x).ToString("F2", ci);
+        var py = NormalizeZero(y).ToString("F2", ci);
+        // App space is Y-down, Nazca is Y-up: negate the world-space pin angle.
+        var pa = NormalizeZero(-pin.GetAbsoluteAngle()).ToString("F0", ci);
+        return $"({px}, {py}, {pa})";
     }
 
     private static void AppendFooter(StringBuilder sb)
