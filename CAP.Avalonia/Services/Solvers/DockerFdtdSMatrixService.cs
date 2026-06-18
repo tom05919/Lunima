@@ -28,6 +28,7 @@ public class DockerFdtdSMatrixService : IFdtdSMatrixService
     /// <summary>Names of containers currently running, killed on process exit.</summary>
     private static readonly ConcurrentDictionary<string, byte> ActiveContainers = new();
     private static int _exitHookInstalled;
+    private static int _orphansReaped;
 
     /// <summary>Shared-memory budget per MPI rank in MB (UCX inter-rank buffers).</summary>
     private const int ShmMbPerRank = 256;
@@ -70,7 +71,12 @@ public class DockerFdtdSMatrixService : IFdtdSMatrixService
             return FdtdSMatrixResult.Fail("No geometry supplied: provide either a GDS file or polygons.");
 
         InstallExitHook();
-        await ReapOrphanContainersAsync(); // clean up leftovers from a hard-killed session
+        // Reap leftover containers from a previous (hard-killed) session ONCE per
+        // process. Doing it before every solve would `docker rm -f` the containers
+        // of concurrently-running solves in THIS session (they share the label) and
+        // kill them mid-run ("No JSON found in FDTD solver output").
+        if (Interlocked.Exchange(ref _orphansReaped, 1) == 0)
+            await ReapOrphanContainersAsync();
 
         var provision = await EnsureImageAsync(ct);
         if (provision != null)
