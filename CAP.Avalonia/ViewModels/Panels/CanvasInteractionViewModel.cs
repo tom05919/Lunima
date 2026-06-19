@@ -83,6 +83,13 @@ public partial class CanvasInteractionViewModel : ObservableObject
     /// </summary>
     public Action<ComponentViewModel>? OpenComponentSettings { get; set; }
 
+    /// <summary>
+    /// Callback invoked after a paste with the source→copy identifier map, so the host can
+    /// carry identifier-keyed per-instance state (e.g. Nazca raw-code overrides) onto the copies.
+    /// Wired by <c>MainViewModel</c> to propagate <c>StoredNazcaOverrides</c>.
+    /// </summary>
+    public Action<IReadOnlyDictionary<string, string>>? OnComponentsPasted { get; set; }
+
     public CanvasInteractionViewModel(
         DesignCanvasViewModel canvas,
         CommandManager commandManager,
@@ -638,6 +645,9 @@ public partial class CanvasInteractionViewModel : ObservableObject
 
         if (cmd.Result != null)
         {
+            // Carry identifier-keyed state (Nazca overrides) onto the copies before they render.
+            OnComponentsPasted?.Invoke(cmd.Result.IdentifierMap);
+
             _canvas.Selection.ClearSelection();
             foreach (var comp in cmd.Result.Components)
             {

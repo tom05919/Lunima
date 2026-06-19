@@ -215,6 +215,12 @@ public partial class MainViewModel : ObservableObject
             LeftPanel.HierarchyPanel.SyncSelectionFromCanvas(comp);
         };
 
+        // Carry per-instance Nazca overrides onto pasted copies so their raw-code
+        // preview and export geometry follow the duplicated component.
+        CanvasInteraction.OnComponentsPasted = identifierMap =>
+            Selection.NazcaOverridePropagator.Propagate(
+                identifierMap, FileOperations.StoredNazcaOverrides);
+
         // Wire rename from hierarchy panel through undo-aware command manager
         LeftPanel.HierarchyPanel.RenameComponent = (component, newName) =>
         {

@@ -139,4 +139,27 @@ public class NazcaCodeOverride
         TemplatePins = null;
         HasNoSimulationModel = false;
     }
+
+    /// <summary>
+    /// Creates an independent deep copy of this override, including new pin-list
+    /// instances. Used when duplicating a component (copy/paste) so the copy's
+    /// override can be edited without mutating the original component's override.
+    /// </summary>
+    public NazcaCodeOverride Clone() => new()
+    {
+        FunctionName = FunctionName,
+        FunctionParameters = FunctionParameters,
+        ModuleName = ModuleName,
+        TemplateFunctionName = TemplateFunctionName,
+        TemplateFunctionParameters = TemplateFunctionParameters,
+        TemplateModuleName = TemplateModuleName,
+        RawCode = RawCode,
+        OverrideWidthMicrometers = OverrideWidthMicrometers,
+        OverrideHeightMicrometers = OverrideHeightMicrometers,
+        OverridePins = OverridePins?.Select(p => p.Clone()).ToList(),
+        TemplatePins = TemplatePins?.Select(p => p.Clone()).ToList(),
+        HasNoSimulationModel = HasNoSimulationModel,
+        OverrideBboxXMinMicrometers = OverrideBboxXMinMicrometers,
+        OverrideBboxYMaxMicrometers = OverrideBboxYMaxMicrometers,
+    };
 }
