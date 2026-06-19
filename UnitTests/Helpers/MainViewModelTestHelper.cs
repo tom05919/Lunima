@@ -146,7 +146,8 @@ public static class MainViewModelTestHelper
             new ComponentEditorFactory(new IComponentEditorProvider[]
             {
                 new GenericComponentEditorProvider()
-            }));
+            }),
+            new TimeDomainViewModel());
     }
 
     /// <summary>

@@ -77,7 +77,8 @@ public class PanelWidthPersistenceTests : IDisposable
             new ComponentEditorFactory(new IComponentEditorProvider[]
             {
                 new GenericComponentEditorProvider()
-            }));
+            }),
+            new TimeDomainViewModel());
 
     [Fact]
     public void LeftPanelWidth_DefaultsTo220()

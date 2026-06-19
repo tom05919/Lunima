@@ -45,6 +45,7 @@ public partial class MainWindow : Window
                 if (onaEditorProvider != null)
                     onaEditorProvider.OpenSweepAsync = analyzer => OpenOnaAnalyzerWindow(analyzer, vm);
                 vm.RightPanel.RoutingDiagnostics.FileDialogService = vm.FileDialogService;
+                vm.RightPanel.TimeDomain.FileDialogService = vm.FileDialogService;
                 ExportDialogWiring.Wire(vm, this, vm.ErrorConsole);
                 vm.ViewportControl.GetViewportSize = GetActualViewportSize;
 

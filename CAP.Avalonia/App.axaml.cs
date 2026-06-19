@@ -157,6 +157,7 @@ public partial class App : Application
         services.AddTransient<GroupSMatrixViewModel>();
         services.AddTransient<ArchitectureReportViewModel>();
         services.AddTransient<PdkConsistencyViewModel>();
+        services.AddTransient<TimeDomainViewModel>();
 
         // Selection-driven component property editors (right panel).
         // Order matters: most specific first, generic fallback last. The

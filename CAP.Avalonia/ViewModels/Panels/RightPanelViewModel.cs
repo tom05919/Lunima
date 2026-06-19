@@ -108,6 +108,11 @@ public partial class RightPanelViewModel : ObservableObject
     /// </summary>
     public AiAssistantViewModel AiAssistant { get; }
 
+    /// <summary>
+    /// ViewModel for the time-domain (transient) simulation panel.
+    /// </summary>
+    public TimeDomainViewModel TimeDomain { get; }
+
     private readonly ComponentEditorFactory _editorFactory;
     private readonly DesignCanvasViewModel _canvas;
 
@@ -143,7 +148,8 @@ public partial class RightPanelViewModel : ObservableObject
         PdkConsistencyViewModel pdkConsistency,
         AiAssistantViewModel aiAssistant,
         OnaSweepViewModel onaAnalysis,
-        ComponentEditorFactory editorFactory)
+        ComponentEditorFactory editorFactory,
+        TimeDomainViewModel timeDomain)
     {
         _preferencesService = preferencesService;
         _editorFactory = editorFactory;
@@ -160,12 +166,14 @@ public partial class RightPanelViewModel : ObservableObject
         ArchitectureReport = architectureReport;
         PdkConsistency = pdkConsistency;
         AiAssistant = aiAssistant;
+        TimeDomain = timeDomain;
         OnaAnalysis = onaAnalysis;
 
         // Configure ViewModels that need canvas reference
         RoutingDiagnostics.Configure(canvas);
         DimensionValidator.Configure(canvas);
         CompressLayout.Configure(canvas);
+        TimeDomain.Configure(canvas);
         OnaAnalysis.Configure(canvas);
 
         // Drive the per-component property editor from canvas selection.
