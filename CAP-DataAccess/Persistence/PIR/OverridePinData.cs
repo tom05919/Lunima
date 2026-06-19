@@ -29,4 +29,13 @@ public class OverridePinData
     /// Derived as the negation of the Nazca preview's pin angle (Y-axis flip).
     /// </summary>
     public double AngleDegrees { get; set; }
+
+    /// <summary>Creates an independent copy of this pin data.</summary>
+    public OverridePinData Clone() => new()
+    {
+        Name = Name,
+        OffsetXMicrometers = OffsetXMicrometers,
+        OffsetYMicrometers = OffsetYMicrometers,
+        AngleDegrees = AngleDegrees,
+    };
 }
