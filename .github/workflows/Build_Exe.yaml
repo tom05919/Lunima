@@ -64,10 +64,10 @@ jobs:
         include:
           - os: windows-latest
             rid: win-x64
-            artifact: Connect-A-PIC-Pro-win-x64
+            artifact: Lunima-win-x64
           - os: ubuntu-latest
             rid: linux-x64
-            artifact: Connect-A-PIC-Pro-linux-x64
+            artifact: Lunima-linux-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -94,11 +94,11 @@ jobs:
         run: |
           cd publish
           if [ -f CAP.Desktop ]; then
-            mv CAP.Desktop Connect-A-PIC-Pro
-            chmod +x Connect-A-PIC-Pro
+            mv CAP.Desktop Lunima
+            chmod +x Lunima
           fi
           if [ -f CAP.Desktop.exe ]; then
-            mv CAP.Desktop.exe Connect-A-PIC-Pro.exe
+            mv CAP.Desktop.exe Lunima.exe
           fi
         shell: bash
 
@@ -221,13 +221,13 @@ jobs:
       - name: Download Windows build
         uses: actions/download-artifact@v4
         with:
-          name: Connect-A-PIC-Pro-win-x64
+          name: Lunima-win-x64
           path: win-x64
 
       - name: Download Linux build
         uses: actions/download-artifact@v4
         with:
-          name: Connect-A-PIC-Pro-linux-x64
+          name: Lunima-linux-x64
           path: linux-x64
 
       - name: Download MSI installer
@@ -238,8 +238,8 @@ jobs:
 
       - name: Create archives
         run: |
-          cd win-x64 && zip -r ../Connect-A-PIC-Pro-${{ steps.info.outputs.version }}-win-x64.zip . && cd ..
-          cd linux-x64 && tar czf ../Connect-A-PIC-Pro-${{ steps.info.outputs.version }}-linux-x64.tar.gz . && cd ..
+          cd win-x64 && zip -r ../Lunima-${{ steps.info.outputs.version }}-win-x64.zip . && cd ..
+          cd linux-x64 && tar czf ../Lunima-${{ steps.info.outputs.version }}-linux-x64.tar.gz . && cd ..
 
       - name: Generate Changelog
         id: changelog
@@ -306,9 +306,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.info.outputs.tag }}
-          name: Connect-A-PIC Pro v${{ steps.info.outputs.version }}
+          name: Lunima v${{ steps.info.outputs.version }}
           body: |
-            ## Connect-A-PIC Pro v${{ steps.info.outputs.version }}
+            ## Lunima v${{ steps.info.outputs.version }}
 
             ${{ steps.changelog.outputs.changelog }}
 
@@ -322,13 +322,13 @@ jobs:
             **Requirements:** .NET 8 Desktop Runtime (x64) - installer will check and prompt if missing
 
             ### Windows (Portable)
-            1. Download `Connect-A-PIC-Pro-${{ steps.info.outputs.version }}-win-x64.zip`
-            2. Extract and run `Connect-A-PIC-Pro.exe`
+            1. Download `Lunima-${{ steps.info.outputs.version }}-win-x64.zip`
+            2. Extract and run `Lunima.exe`
 
             ### Linux
-            1. Download `Connect-A-PIC-Pro-${{ steps.info.outputs.version }}-linux-x64.tar.gz`
-            2. Extract: `tar xzf Connect-A-PIC-Pro-*.tar.gz`
-            3. Run: `./Connect-A-PIC-Pro`
+            1. Download `Lunima-${{ steps.info.outputs.version }}-linux-x64.tar.gz`
+            2. Extract: `tar xzf Lunima-*.tar.gz`
+            3. Run: `./Lunima`
 
             No .NET installation required for portable versions — everything is included.
 
@@ -336,5 +336,5 @@ jobs:
             **Commit:** ${{ github.sha }}
           files: |
             msi/Lunima-Setup-${{ steps.info.outputs.version }}.msi
-            Connect-A-PIC-Pro-${{ steps.info.outputs.version }}-win-x64.zip
-            Connect-A-PIC-Pro-${{ steps.info.outputs.version }}-linux-x64.tar.gz
+            Lunima-${{ steps.info.outputs.version }}-win-x64.zip
+            Lunima-${{ steps.info.outputs.version }}-linux-x64.tar.gz
