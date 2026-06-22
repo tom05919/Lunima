@@ -1,0 +1,38 @@
+using CAP.Avalonia;
+using CAP.Avalonia.Controls.Canvas.ComponentPreview;
+using CAP.Avalonia.ViewModels.Properties;
+using CAP_Core.Export;
+using CAP_Core.Solvers.Fdtd;
+using CAP_Core.Solvers.ModeSolver;
+using Microsoft.Extensions.DependencyInjection;
+using Shouldly;
+using Xunit;
+
+namespace UnitTests.Architecture;
+
+/// <summary>
+/// Builds the real production DI container (<see cref="App.ConfigureServices"/>) and
+/// resolves the services that the vertical-slice refactor moved into per-feature
+/// extension methods. A missing or misplaced registration would otherwise only surface
+/// as a crash on app start — no other test exercises the production container
+/// (UiScreenshotTests deliberately use a test-only app + VM helper).
+///
+/// Only POCO/solver/preview services are resolved here: they have no Avalonia-runtime
+/// dependency, so they construct cleanly in a headless test.
+/// </summary>
+public class AppDiContainerTests
+{
+    [Fact]
+    public void Container_ResolvesRedistributedSolverAndPreviewServices()
+    {
+        var services = new ServiceCollection();
+        App.ConfigureServices(services);
+        using var sp = services.BuildServiceProvider();
+
+        sp.GetRequiredService<IFdtdSMatrixService>().ShouldNotBeNull();
+        sp.GetRequiredService<IModeSolverService>().ShouldNotBeNull();
+        sp.GetRequiredService<GdsPreviewRenderService>().ShouldNotBeNull();
+        sp.GetRequiredService<NazcaComponentPreviewService>().ShouldNotBeNull();
+        sp.GetRequiredService<ComponentEditorFactory>().ShouldNotBeNull();
+    }
+}
