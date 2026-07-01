@@ -165,12 +165,23 @@ python3 tools/semantic_search.py "query" # Semantic code search
 
 ---
 
-## License
+## Project status
 
-MIT License - see [LICENSE](LICENSE) for details.
+Lunima is an independent MIT-licensed open-source project. It is not an official Akhetonics product.
+
+Akhetonics supports the project through limited work-time contributions, as part of its broader interest in open photonic design tooling. The project remains independently maintained and community-driven.
+
+Supported by [<img width="214" height="31" alt="Akhetonics logo" src="https://github.com/user-attachments/assets/1a99b0ef-abe0-4063-825f-ff2f38c5d934" />](https://www.akhetonics.com/)
+
 
 ---
 
 ## Origins
 
 Lunima originated from [Connect-A-PIC](https://github.com/Akhetonics/Connect-A-PIC) and has evolved into a standalone photonic design system.
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
