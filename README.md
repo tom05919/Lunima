@@ -2,9 +2,10 @@
 
 **AI-collaborative photonic design system**
 
-<img width="1407" height="932" alt="Lunima photonic design canvas" src="https://github.com/user-attachments/assets/a784b7f3-7300-453f-a6a8-12638367ef9a" />
+<img width="1860" height="1012" alt="grafik" src="https://github.com/user-attachments/assets/f34e4299-afa4-4da0-bf9f-52a0d1912f2e" />
 
-<img width="1534" height="475" alt="Lunima component library and simulation panel" src="https://github.com/user-attachments/assets/80dcf0e1-1cbf-4709-ab79-5292cf3e415e" />
+<img width="1861" height="835" alt="grafik" src="https://github.com/user-attachments/assets/855e2fea-7b1a-4f57-a8b7-f6e55e81fb06" />
+
 
 > Lunima is a photonic design environment for fast, physically grounded circuit exploration and system-level thinking.
 
