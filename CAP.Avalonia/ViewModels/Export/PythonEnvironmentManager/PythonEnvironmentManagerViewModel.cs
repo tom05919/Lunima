@@ -31,6 +31,14 @@ public partial class PythonEnvironmentManagerViewModel : ObservableObject
     [ObservableProperty]
     private string _pythonVersion = UvBootstrapper.DefaultPythonVersion;
 
+    /// <summary>
+    /// Python versions offered in the create-environment dropdown. Limited to versions
+    /// with known-good Nazca/pyclipper support (3.14+ currently breaks numpy/nazca);
+    /// the default is <see cref="UvBootstrapper.DefaultPythonVersion"/>.
+    /// </summary>
+    public IReadOnlyList<string> PythonVersionChoices { get; } =
+        new[] { "3.10", "3.11", "3.12", "3.13" };
+
     [ObservableProperty]
     private bool _isBusy;
 
@@ -56,6 +64,31 @@ public partial class PythonEnvironmentManagerViewModel : ObservableObject
         _healthChecker = healthChecker;
 
         RefreshList();
+    }
+
+    /// <summary>Name of the environment created by the one-click "install Nazca" offers.</summary>
+    public const string DefaultEnvironmentName = "nazca";
+
+    /// <summary>
+    /// One-click entry point used by the GDS-export fallback and the export guard:
+    /// creates the default Nazca environment with default settings. No-ops (with an
+    /// explanatory status) when an environment of that name already exists, and does
+    /// nothing while another operation runs.
+    /// </summary>
+    public async Task StartDefaultNazcaInstallAsync()
+    {
+        if (IsBusy) return;
+
+        if (_registry.Exists(DefaultEnvironmentName))
+        {
+            ProgressText = $"Environment '{DefaultEnvironmentName}' already exists — "
+                + "select it below or use Repair if it is broken.";
+            return;
+        }
+
+        NewEnvironmentName = DefaultEnvironmentName;
+        PythonVersion = UvBootstrapper.DefaultPythonVersion;
+        await CreateAndInstallCommand.ExecuteAsync(null);
     }
 
     /// <summary>Creates a new venv and installs Nazca + pyclipper into it.</summary>
